@@ -10,15 +10,34 @@ pthread_cond_t cond2;
 
 int clk = 0,done=0, ntemps=2;
 
-//Estructura PCBs
-struct PCB{
+// Estructura PCB
+struct PCB {
     int PID;
+    // Otros campos relacionados con el PCB
+    struct PCB* siguiente;
 };
 
+// Estructura ProcessQueue
 struct ProcessQueue {
-    struct PCB* pcb; // Puntero al PCB en este nodo de la cola
-    struct PCB* siguiente; // Puntero al siguiente nodo de la cola
+    struct PCB* first;
+    struct PCB* last;
 };
+
+void initializeProcessQueue(struct ProcessQueue* lista){
+    lista->first = NULL;
+    lista->last = NULL;
+}
+
+void addPCB(struct ProcessQueue* lista, struct PCB* pcb){
+    if(lista->first==NULL){
+        lista->first=pcb;
+        lista->last=pcb;
+    }else{
+        lista->last->siguiente=pcb;
+        lista->last=pcb;
+    } 
+}
+
 
 // Función Clock
 void *clock_thread(void *args) {
@@ -35,54 +54,64 @@ void *clock_thread(void *args) {
 }
 
 
-// Función Process Generator
+/* // Función Process Generator
 void *timer_thread(void *args) {
     pthread_mutex_lock(&mutex);
     while (1) {
         printf("suma 1\n");
         done++;
+        clk2++;
         pthread_cond_signal(&cond);
         pthread_cond_wait(&cond2,&mutex); 
     }
-}
+} */
 
 // Función Scheduler/Dispatcher
 void *scheduler_dispatcher_thread(void *args) {
     pthread_mutex_lock(&mutex);
     while (1) {
-        printf("suma 2\n");
         done++;
         clk++;
         pthread_cond_signal(&cond);
-        pthread_cond_wait(&cond2,&mutex); 
-    }
-}
-
-
-//Funcion Process Generator
-void *process_generator_thread(void *args){
-    struct ProcessQueue* pcb_list = NULL;
-    int pid=1;
-    while (1) {
-        //Crear nuevo pcb
-        struct PCB* new_pcb = (struct PCB*)malloc(sizeof(struct PCB));
-        new_pcb->PID=pid++;
-
-        // Agrega el nuevo PCB a la lista
-        if (pcb_list == NULL) {
-            pcb_list->pcb=new_pcb; // La lista estaba vacía, el nuevo PCB se convierte en la cabeza de la lista
-            pcb_list->siguiente=NULL;
-        } else {
-            // Encuentra el último PCB en la lista y agrega el nuevo PCB al final
-            while(pcb_list!=NULL) pcb_list=pcb_list->siguiente;
-            pcb_list->pcb=new_pcb;
-            pcb_list->siguiente=NULL;
+        pthread_cond_wait(&cond2,&mutex);
+        if(clk==10000){
+            printf("Scheduler \n");
+            clk=0;
         }
     }
 }
 
-int main() {
+//Funcion Process Generator
+void *process_generator_thread(void *args){
+    int frecuencia=*((int *) args);
+    int pid=0,clk2=0;
+    struct ProcessQueue lista;
+    initializeProcessQueue(&lista);
+
+    pthread_mutex_lock(&mutex);
+    while(1){
+        done++;
+        clk2++;
+        pthread_cond_signal(&cond);
+        pthread_cond_wait(&cond2,&mutex);
+        if(clk2>=frecuencia){
+            struct PCB* new_pcb = (struct PCB*)malloc(sizeof(struct PCB));
+            new_pcb->PID=pid++;
+            new_pcb->siguiente=NULL;
+            addPCB(&lista,new_pcb);
+            printf("Process Generator\n");
+            clk2=0;
+        }
+    }
+}
+
+int main(int argc, char *argv[]) {
     // Inicializaciones
+    if (argc != 2){
+        printf("USO: %s frecuencia\n",argv[0]);
+        return 1;
+    }
+    int frecuencia = atoi(argv[1]);
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&cond,NULL);
     pthread_cond_init(&cond2,NULL);
@@ -94,36 +123,23 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Crea el hilo timer
-    pthread_t timer_thread_id;
-    if (pthread_create(&timer_thread_id, NULL, timer_thread, NULL) != 0) {
-        perror("Error al crear el hilo timer");
-        exit(EXIT_FAILURE);
-    }
-
-    // Crea el hilo timer
-    pthread_t timer2_thread_id;
-    if (pthread_create(&timer2_thread_id, NULL, timer2_thread, NULL) != 0) {
-        perror("Error al crear el hilo timer2");
-        exit(EXIT_FAILURE);
-    }
-
-    // Crea el hilo Process Generator
-    pthread_t process_generator_thread_id;
-    if (pthread_create(&process_generator_thread_id, NULL, process_generator_thread, NULL) != 0) {
-        perror("Error al crear el hilo Process Generator");
-        exit(EXIT_FAILURE);
-    }
-
     // Crea el hilo Scheduler/Dispatcher
     pthread_t scheduler_dispatcher_thread_id;
     if (pthread_create(&scheduler_dispatcher_thread_id, NULL, scheduler_dispatcher_thread, NULL) != 0) {
         perror("Error al crear el hilo Scheduler/Dispatcher");
         exit(EXIT_FAILURE);
     }
+    // Crea el hilo Process Generator
+    pthread_t process_generator_thread_id;
+    if (pthread_create(&process_generator_thread_id, NULL, process_generator_thread, &frecuencia) != 0) {
+        perror("Error al crear el hilo Process Generator");
+        exit(EXIT_FAILURE);
+    }
+
 
     pthread_join(clock_thread_id,NULL);
-    pthread_join(timer_thread_id,NULL);
+    pthread_join(scheduler_dispatcher_thread_id,NULL);
+    pthread_join(process_generator_thread_id,NULL);
     pthread_mutex_destroy(&mutex);
     pthread_cond_destroy(&cond);
     pthread_cond_destroy(&cond2);
