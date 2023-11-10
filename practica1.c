@@ -77,7 +77,7 @@ void *scheduler_dispatcher_thread(void *args) {
         clk++;
         pthread_cond_signal(&cond);
         pthread_cond_wait(&cond2,&mutex);
-        if(clk==10000){
+        if(clk==10){
             printf("Scheduler \n");
             clk=0;
         }
