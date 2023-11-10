@@ -8,7 +8,7 @@ pthread_mutex_t mutex;
 pthread_cond_t cond;
 pthread_cond_t cond2;
 
-int clk = 0,done=0, ntemps=2;
+int clk = 0,done=0, ntemps=2, nhilos=0;
 
 // Estructura PCB
 struct PCB {
@@ -22,6 +22,22 @@ struct ProcessQueue {
     struct PCB* first;
     struct PCB* last;
 };
+
+struct Thread{
+    int id_thread;
+};
+
+struct Core{
+    int id_core;
+    struct Thread* threads;
+};
+
+struct CPU {
+    int cpu_id;
+    struct Core* cores;
+};
+
+
 
 void initializeProcessQueue(struct ProcessQueue* lista){
     lista->first = NULL;
@@ -42,6 +58,7 @@ void addPCB(struct ProcessQueue* lista, struct PCB* pcb){
 // Función Clock
 void *clock_thread(void *args) {
     while (1) {
+        usleep(100000);
         pthread_mutex_lock(&mutex);
         while(done < ntemps){
             pthread_cond_wait(&cond,&mutex);
@@ -49,22 +66,8 @@ void *clock_thread(void *args) {
         done=0;
         pthread_cond_broadcast(&cond2);
         pthread_mutex_unlock(&mutex);
-
     }
 }
-
-
-/* // Función Process Generator
-void *timer_thread(void *args) {
-    pthread_mutex_lock(&mutex);
-    while (1) {
-        printf("suma 1\n");
-        done++;
-        clk2++;
-        pthread_cond_signal(&cond);
-        pthread_cond_wait(&cond2,&mutex); 
-    }
-} */
 
 // Función Scheduler/Dispatcher
 void *scheduler_dispatcher_thread(void *args) {
@@ -105,16 +108,52 @@ void *process_generator_thread(void *args){
     }
 }
 
+struct CPU* inicializarMachine(int ncpus, int ncores, int nthreads){
+    struct CPU* cpus = (struct CPU*)malloc(ncpus * sizeof(struct CPU));
+
+     for (int i = 0; i < ncpus; i++) {
+        cpus[i].cpu_id = i;
+        cpus[i].cores = (struct Core*)malloc(ncores * sizeof(struct Core));
+
+        for (int j = 0; j < ncores; j++) {
+            cpus[i].cores[j].id_core = j;
+            cpus[i].cores[j].threads = (struct Thread*)malloc(nthreads * sizeof(struct Thread));
+
+            for (int k = 0; k < nthreads; k++) {
+                cpus[i].cores[j].threads[k].id_thread = k;
+            }
+        }
+    }
+    return cpus;
+}
+
+void liberarMachine(struct CPU* cpus, int ncpus, int ncores){
+    for (int i = 0; i < ncpus; i++) {
+        for (int j = 0; j < ncores; j++) {
+            free(cpus[i].cores[j].threads);
+        }
+        free(cpus[i].cores);
+    }
+}
 int main(int argc, char *argv[]) {
-    // Inicializaciones
-    if (argc != 2){
-        printf("USO: %s frecuencia\n",argv[0]);
+
+    //Verificacion numero de argumentos
+    if (argc != 5){
+        printf("USO: %s frecuencia <num_cpus> <num_cores> <num_threads>\n",argv[0]);
         return 1;
     }
+
+    //Argumentos y inicializacion de mutex
     int frecuencia = atoi(argv[1]);
+    int ncpus=atoi(argv[2]);
+    int ncores=atoi(argv[3]);
+    int nthreads=atoi(argv[4]);
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&cond,NULL);
     pthread_cond_init(&cond2,NULL);
+
+    //Inicializar estructura machine
+    struct CPU* cpus = inicializarMachine(ncpus,ncores,nthreads);
 
     // Crea el hilo Clock
     pthread_t clock_thread_id;
@@ -135,8 +174,10 @@ int main(int argc, char *argv[]) {
         perror("Error al crear el hilo Process Generator");
         exit(EXIT_FAILURE);
     }
+    //Liberar las variables de la estructura machine
+    liberarMachine(cpus,ncpus,ncores);
 
-
+    //Joins y destroys
     pthread_join(clock_thread_id,NULL);
     pthread_join(scheduler_dispatcher_thread_id,NULL);
     pthread_join(process_generator_thread_id,NULL);
