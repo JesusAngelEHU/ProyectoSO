@@ -3,17 +3,16 @@
 #include <pthread.h>
 #include <unistd.h> 
 #include <signal.h> 
-
 pthread_mutex_t mutex;
 pthread_cond_t cond;
 pthread_cond_t cond2;
 
-int clk = 0,done=0, ntemps=2, nhilos=0;
-
+int clk = 0,done=0, ntemps=2,proceso_generado=1;
+int ncpus,ncores,nthreads;
 // Estructura PCB
 struct PCB {
     int PID;
-    // Otros campos relacionados con el PCB
+    char estado = "Preparado";
     struct PCB* siguiente;
 };
 
@@ -25,6 +24,7 @@ struct ProcessQueue {
 
 struct Thread{
     int id_thread;
+    struct PCB* pcb;
 };
 
 struct Core{
@@ -36,8 +36,9 @@ struct CPU {
     int cpu_id;
     struct Core* cores;
 };
-
-
+//Inicializacion de las estructuras
+struct ProcessQueue lista;
+struct CPU* cpus = (struct CPU*)malloc(ncpus * sizeof(struct CPU));
 
 void initializeProcessQueue(struct ProcessQueue* lista){
     lista->first = NULL;
@@ -78,7 +79,16 @@ void *scheduler_dispatcher_thread(void *args) {
         pthread_cond_signal(&cond);
         pthread_cond_wait(&cond2,&mutex);
         if(clk==10){
-            printf("Scheduler \n");
+            if(proceso_generado=1){
+                if (lista.first->estado="preparado"){
+                    for(int i=0; i<ncpus;i++)
+                        for(int j=0; j<ncores;j++)
+                            for(int k=0; k<nthreads)
+                                if(cpus[i]->cores[j]->threads.pcb[k]=NULL) cpus[i].cores[j].threads[k].pcb=PCB;
+                    }
+                }
+
+            }
             clk=0;
         }
     }
@@ -88,7 +98,6 @@ void *scheduler_dispatcher_thread(void *args) {
 void *process_generator_thread(void *args){
     int frecuencia=*((int *) args);
     int pid=0,clk2=0;
-    struct ProcessQueue lista;
     initializeProcessQueue(&lista);
 
     pthread_mutex_lock(&mutex);
@@ -108,9 +117,7 @@ void *process_generator_thread(void *args){
     }
 }
 
-struct CPU* inicializarMachine(int ncpus, int ncores, int nthreads){
-    struct CPU* cpus = (struct CPU*)malloc(ncpus * sizeof(struct CPU));
-
+struct CPU* inicializarMachine(){
      for (int i = 0; i < ncpus; i++) {
         cpus[i].cpu_id = i;
         cpus[i].cores = (struct Core*)malloc(ncores * sizeof(struct Core));
@@ -145,15 +152,15 @@ int main(int argc, char *argv[]) {
 
     //Argumentos y inicializacion de mutex
     int frecuencia = atoi(argv[1]);
-    int ncpus=atoi(argv[2]);
-    int ncores=atoi(argv[3]);
-    int nthreads=atoi(argv[4]);
+    ncpus=atoi(argv[2]);
+    ncores=atoi(argv[3]);
+    nthreads=atoi(argv[4]);
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&cond,NULL);
     pthread_cond_init(&cond2,NULL);
 
     //Inicializar estructura machine
-    struct CPU* cpus = inicializarMachine(ncpus,ncores,nthreads);
+    struct CPU* cpus = inicializarMachine();
 
     // Crea el hilo Clock
     pthread_t clock_thread_id;
@@ -164,7 +171,7 @@ int main(int argc, char *argv[]) {
 
     // Crea el hilo Scheduler/Dispatcher
     pthread_t scheduler_dispatcher_thread_id;
-    if (pthread_create(&scheduler_dispatcher_thread_id, NULL, scheduler_dispatcher_thread, NULL) != 0) {
+    if (pthread_create(&scheduler_dispatcher_thread_id, NULL, scheduler_dispatcher_thread,NULL) != 0) {
         perror("Error al crear el hilo Scheduler/Dispatcher");
         exit(EXIT_FAILURE);
     }
