@@ -10,6 +10,7 @@ pthread_cond_t cond2;
 
 int clk = 0,done=0, ntemps=2,proceso_generado=1;
 int ncpus,ncores,nthreads;
+
 // Estructura PCB
 struct PCB {
     int PID;
@@ -37,23 +38,25 @@ struct CPU {
     int cpu_id;
     struct Core* cores;
 };
-//Inicializacion de las estructuras
-struct ProcessQueue lista;
-struct CPU* cpus = NULL;
 
-void initializeProcessQueue(struct ProcessQueue* lista){
-    lista->first = NULL;
-    lista->last = NULL;
+struct CPU* cpus;
+struct ProcessQueue lista;
+
+void initializeProcessQueue(){
+    lista.first = NULL;
+    lista.last = NULL;
 }
 
 void addPCB(struct ProcessQueue* lista, struct PCB* pcb){
     if(lista->first==NULL){
         lista->first=pcb;
         lista->last=pcb;
+        pcb->siguiente=pcb;
     }else{
-        lista->last->siguiente=pcb;
         lista->last=pcb;
-    } 
+        pcb->siguiente=lista->first;
+        lista->last->siguiente=pcb;
+        }
 }
 
 
@@ -71,33 +74,39 @@ void *clock_thread(void *args) {
     }
 }
 
+void round_robin(){
+    //Recorrer los hilos
+    for(int i=0; i<ncpus; i++){
+        for(int j=0; j<ncores; j++){
+            for(int k=0; k<ncores; k++){
+                //Si el hilo esta libre se le asigna el pcb
+                //if(cpus[i].cores[j].threads[k].pcb==NULL){
+                    struct PCB *aux = lista.first;
+                    while(1){
+                        if(strcmp(aux->estado,"Preparado")) break;
+                    aux=aux->siguiente;
+                    }
+                    strcpy(cpus[i].cores[j].threads[k].pcb->estado,"Esperando");
+                    cpus[i].cores[j].threads[k].pcb=aux;
+                    //printf("Proceso %i añadido a hilo %i",aux->PID,cpus[i].cores[j].threads[k].id_thread);
+                //}
+            }
+        }
+    }
+}
+
 // Función Scheduler/Dispatcher
 void *scheduler_dispatcher_thread(void *args) {
     pthread_mutex_lock(&mutex);
     while (1) {
         done++;
-        clk++;
         pthread_cond_signal(&cond);
         pthread_cond_wait(&cond2,&mutex);
-        if(clk==10){
-            if(proceso_generado){
-                if (!strcmp(lista.first->estado, "Preparado")){
-                    printf("Primer pcb preparado");
-                    for(int i=0; i<ncpus;i++){
-                        for(int j=0; j<ncores;j++){
-                            for(int k=0; k<nthreads;k++){
-                                if(cpus[i].cores[j].threads[k].pcb==NULL){
-                                    strcpy(lista.first->estado, "Ejecucion");
-                                    cpus[i].cores[j].threads[k].pcb=lista.first;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-        }
+        if (clk==5){
+            round_robin();
             clk=0;
+        } 
+        clk++;
     }
 }
 
@@ -105,8 +114,7 @@ void *scheduler_dispatcher_thread(void *args) {
 void *process_generator_thread(void *args){
     int frecuencia=*((int *) args);
     int pid=0,clk2=0;
-    cpus = (struct CPU*)malloc(ncpus * sizeof(struct CPU));
-    initializeProcessQueue(&lista);
+    initializeProcessQueue();
     pthread_mutex_lock(&mutex);
     while(1){
         done++;
@@ -119,24 +127,23 @@ void *process_generator_thread(void *args){
             strcpy(new_pcb->estado,"Preparado");
             new_pcb->siguiente=NULL;
             addPCB(&lista,new_pcb);
-            printf("Proceso generado PID:%i\n",lista.last->PID);
+            printf("Proceso con PID:%i añadido a la cola\n", lista.last->PID);
             clk2=0;
         }
     }
 }
-
 struct CPU* inicializarMachine(){
-     for (int i = 0; i < ncpus; i++) {
-        cpus = (struct CPU*)malloc(ncpus * sizeof(struct CPU));
+    cpus = (struct CPU*)malloc(ncpus * sizeof(struct CPU));
+    for (int i = 0; i < ncpus; i++) {
         cpus[i].cpu_id=i;
         cpus[i].cores=NULL;
         cpus[i].cores = (struct Core*)malloc(ncores * sizeof(struct Core));
 
         for (int j = 0; j < ncores; j++) {
-            cpus[i].cores[j].id_core = j;
+            cpus[i].cores[j].id_core = i*ncores +j;
             cpus[i].cores[j].threads = (struct Thread*)malloc(nthreads * sizeof(struct Thread));
             for (int k = 0; k < nthreads; k++) {
-                cpus[i].cores[j].threads[k].id_thread = k;
+                cpus[i].cores[j].threads[k].id_thread = i*ncores*nthreads +k;
                 cpus[i].cores[j].threads[k].pcb = NULL;
             }
         }
@@ -160,8 +167,8 @@ void liberarMachine(struct CPU* cpus, int ncpus, int ncores){
         actual = siguiente;
     }
 }
-int main(int argc, char *argv[]) {
 
+int main(int argc, char *argv[]) {
     //Verificacion numero de argumentos
     if (argc != 5){
         printf("USO: %s frecuencia <num_cpus> <num_cores> <num_threads>\n",argv[0]);
@@ -176,8 +183,9 @@ int main(int argc, char *argv[]) {
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&cond,NULL);
     pthread_cond_init(&cond2,NULL);
-    //Inicializar estructura machine
-    struct CPU* cpus = inicializarMachine();
+
+    //Inicializar estructuras
+    cpus = inicializarMachine();
 
     // Crea el hilo Clock
     pthread_t clock_thread_id;
@@ -192,14 +200,16 @@ int main(int argc, char *argv[]) {
         perror("Error al crear el hilo Scheduler/Dispatcher");
         exit(EXIT_FAILURE);
     }
+
     // Crea el hilo Process Generator
     pthread_t process_generator_thread_id;
     if (pthread_create(&process_generator_thread_id, NULL, process_generator_thread, &frecuencia) != 0) {
         perror("Error al crear el hilo Process Generator");
         exit(EXIT_FAILURE);
     }
+
     //Liberar las variables de la estructura machine
-    //liberarMachine(cpus,ncpus,ncores);
+    liberarMachine(cpus,ncpus,ncores);
 
     // //Joins y destroys
     pthread_join(clock_thread_id,NULL);
