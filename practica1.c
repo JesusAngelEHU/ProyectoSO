@@ -4,6 +4,7 @@
 #include <unistd.h> 
 #include <signal.h> 
 #include <string.h>
+#include <limits.h>
 pthread_mutex_t mutex;
 pthread_cond_t cond;
 pthread_cond_t cond2;
@@ -15,6 +16,7 @@ int ncpus,ncores,nthreads;
 struct PCB {
     int PID;
     char estado[10];
+    int prioridad;
     struct PCB* siguiente;
 };
 
@@ -74,22 +76,45 @@ void *clock_thread(void *args) {
     }
 }
 
+void cambio_contexto() {
+    int id,min = INT_MAX;
+
+    // Recorrer los hilos
+    for (int i = 0; i < ncpus; i++) {
+        for (int j = 0; j < ncores; j++) {
+            for (int k = 0; k < ncores; k++) {
+                // Si el hilo está ocupado y tiene menor prioridad
+                if (cpus[i].cores[j].threads[k].pcb != NULL &&
+                    cpus[i].cores[j].threads[k].pcb->prioridad < min) {
+                    min = cpus[i].cores[j].threads[k].pcb->prioridad;
+                    id = cpus[i].cores[j].threads[k].pcb->PID;
+                }
+            }
+        }
+    }
+
+    // Realizar acciones con el hilo seleccionado
+    // Por ejemplo, imprimir el proceso con menor prioridad
+    printf("Cambio de contexto: Proceso con PID %d en hilo %d\n", min);
+}
+
+
 void round_robin(){
     //Recorrer los hilos
     for(int i=0; i<ncpus; i++){
         for(int j=0; j<ncores; j++){
             for(int k=0; k<ncores; k++){
                 //Si el hilo esta libre se le asigna el pcb
-                //if(cpus[i].cores[j].threads[k].pcb==NULL){
+                if(cpus[i].cores[j].threads[k].pcb==NULL){
                     struct PCB *aux = lista.first;
-                    while(1){
-                        if(strcmp(aux->estado,"Preparado")) break;
-                    aux=aux->siguiente;
+                    while(!strcmp(aux->estado, "Preparado")){
+                        aux=aux->siguiente;
                     }
                     strcpy(cpus[i].cores[j].threads[k].pcb->estado,"Esperando");
                     cpus[i].cores[j].threads[k].pcb=aux;
                     //printf("Proceso %i añadido a hilo %i",aux->PID,cpus[i].cores[j].threads[k].id_thread);
-                //}
+                }else cambio_contexto(); 
+                
             }
         }
     }
@@ -97,12 +122,14 @@ void round_robin(){
 
 // Función Scheduler/Dispatcher
 void *scheduler_dispatcher_thread(void *args) {
+    int frecuencia=*((int *) args);
     pthread_mutex_lock(&mutex);
     while (1) {
         done++;
         pthread_cond_signal(&cond);
         pthread_cond_wait(&cond2,&mutex);
-        if (clk==5){
+        if (clk>=frecuencia){
+            bajar_prioridad_threads();
             round_robin();
             clk=0;
         } 
@@ -126,6 +153,7 @@ void *process_generator_thread(void *args){
             new_pcb->PID=pid++;
             strcpy(new_pcb->estado,"Preparado");
             new_pcb->siguiente=NULL;
+            new_pcb->prioridad=50;
             addPCB(&lista,new_pcb);
             printf("Proceso con PID:%i añadido a la cola\n", lista.last->PID);
             clk2=0;
