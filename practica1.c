@@ -98,22 +98,27 @@ void cambio_contexto() {
     printf("Cambio de contexto: Proceso con PID %d en hilo %d\n", min);
 }
 
-
 void round_robin(){
     //Recorrer los hilos
     for(int i=0; i<ncpus; i++){
         for(int j=0; j<ncores; j++){
-            for(int k=0; k<ncores; k++){
+            for(int k=0; k<nthreads; k++){
                 //Si el hilo esta libre se le asigna el pcb
+                printf("EL id de el thread es: %i\n",cpus[i].cores[j].threads[k].id_thread);
                 if(cpus[i].cores[j].threads[k].pcb==NULL){
+                    printf("Hilo libre\n");
                     struct PCB *aux = lista.first;
-                    while(!strcmp(aux->estado, "Preparado")){
+                    while(strcmp(aux->estado, "Preparado")==0){
+                        printf("Estado:%c",aux->estado);
                         aux=aux->siguiente;
                     }
                     strcpy(cpus[i].cores[j].threads[k].pcb->estado,"Esperando");
                     cpus[i].cores[j].threads[k].pcb=aux;
                     //printf("Proceso %i añadido a hilo %i",aux->PID,cpus[i].cores[j].threads[k].id_thread);
-                }else cambio_contexto(); 
+                }else{
+                    printf("Cambio de contexto\n");
+                    cambio_contexto();
+                }  
                 
             }
         }
@@ -129,7 +134,7 @@ void *scheduler_dispatcher_thread(void *args) {
         pthread_cond_signal(&cond);
         pthread_cond_wait(&cond2,&mutex);
         if (clk>=frecuencia){
-            bajar_prioridad_threads();
+            //bajar_prioridad_threads();
             round_robin();
             clk=0;
         } 
@@ -164,14 +169,14 @@ struct CPU* inicializarMachine(){
     cpus = (struct CPU*)malloc(ncpus * sizeof(struct CPU));
     for (int i = 0; i < ncpus; i++) {
         cpus[i].cpu_id=i;
-        cpus[i].cores=NULL;
         cpus[i].cores = (struct Core*)malloc(ncores * sizeof(struct Core));
 
         for (int j = 0; j < ncores; j++) {
             cpus[i].cores[j].id_core = i*ncores +j;
             cpus[i].cores[j].threads = (struct Thread*)malloc(nthreads * sizeof(struct Thread));
             for (int k = 0; k < nthreads; k++) {
-                cpus[i].cores[j].threads[k].id_thread = i*ncores*nthreads +k;
+                cpus[i].cores[j].threads[k].id_thread = i*ncores*nthreads +j *nthreads + k;
+                cpus[i].cores[j].threads[k].pcb = (struct PCB*)malloc(sizeof(struct PCB));
                 cpus[i].cores[j].threads[k].pcb = NULL;
             }
         }
@@ -197,6 +202,7 @@ void liberarMachine(struct CPU* cpus, int ncpus, int ncores){
 }
 
 int main(int argc, char *argv[]) {
+
     //Verificacion numero de argumentos
     if (argc != 5){
         printf("USO: %s frecuencia <num_cpus> <num_cores> <num_threads>\n",argv[0]);
@@ -224,7 +230,7 @@ int main(int argc, char *argv[]) {
 
     // Crea el hilo Scheduler/Dispatcher
     pthread_t scheduler_dispatcher_thread_id;
-    if (pthread_create(&scheduler_dispatcher_thread_id, NULL, scheduler_dispatcher_thread,NULL) != 0) {
+    if (pthread_create(&scheduler_dispatcher_thread_id, NULL, scheduler_dispatcher_thread,&frecuencia) != 0) {
         perror("Error al crear el hilo Scheduler/Dispatcher");
         exit(EXIT_FAILURE);
     }
