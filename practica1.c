@@ -49,6 +49,23 @@ void initializeProcessQueue(){
     lista.first = NULL;
     lista.last = NULL;
 }
+// Función para imprimir el estado de la cola y los PCBs
+void imprimirEstadoCola() {
+    if (lista.first == NULL) {
+        printf("Cola vacía\n");
+        return;
+    }
+
+    printf("Estado de la cola:\n");
+
+    struct PCB* aux = lista.first;
+    do {
+        printf("PID: %d, Estado: %s, Quantum: %d\n", aux->PID, aux->estado, aux->quantum);
+        aux = aux->siguiente;
+    } while (aux != lista.first);
+
+    printf("Fin de la cola\n");
+}
 
 void addPCB(struct ProcessQueue* lista, struct PCB* pcb){
     if(lista->first==NULL){
@@ -90,11 +107,14 @@ void round_robin(){
                     struct PCB *aux = lista.first;
                     while(aux->PID != lista.last->PID || strcmp(aux->estado,"Preparado") != 0){
                         if(strcmp(aux->estado,"Preparado")==0){ 
-                            cpus[i].cores[j].threads[k].pcb=aux;
-                            strcpy(cpus[i].cores[j].threads[k].pcb->estado,"Ejecucion");
-                            printf("Proceso %i añadido a hilo %i\n",aux->PID,cpus[i].cores[j].threads[k].id_thread);
+                            if(cpus[i].cores[j].threads[k].pcb == NULL){
+                                cpus[i].cores[j].threads[k].pcb=aux;
+                                strcpy(cpus[i].cores[j].threads[k].pcb->estado,"Ejecucion");
+                                printf("Proceso %i añadido a hilo %i\n",aux->PID,cpus[i].cores[j].threads[k].id_thread);
+                                break;
+                            }
                         }
-                        aux = aux->siguiente;
+                    aux = aux->siguiente;
                     }
                 }
             }
@@ -102,40 +122,51 @@ void round_robin(){
     }
 }
 
+// Función para mover un nodo al final de la cola
+void moverAlFinal(struct PCB* nodo) {
+    // Actualizar la referencia a lista.first solo si el nodo que se movió era el primer elemento
+    if (lista.first->PID == nodo->PID) {
+        lista.first = lista.first->siguiente;
+
+    }
+    if (nodo->PID != lista.last->PID) {
+        // Quitar el nodo de su posición actual
+        struct PCB* siguiente = nodo->siguiente;
+        struct PCB* anterior = nodo;
+        while (anterior->siguiente->PID != nodo->PID) {
+            anterior = anterior->siguiente;
+        }
+        anterior->siguiente = siguiente;
+
+        // Agregar el nodo al final de la cola
+        lista.last->siguiente = nodo;
+        lista.last = nodo;
+        nodo->siguiente = lista.first;
+    }
+}
+
+
+
 //Funcion para baja el quantum de todos los procesos en la proces_queue, si el quantum es 0
 //lo quita del hilo y lo pone al final de la cola
 void bajar_quantum_threads(){
     struct PCB *aux = lista.first;
     // Recorrer la lista circularmente y reducir en uno el quantum de cada nodo
     while(aux->PID != lista.last->PID){
-        aux->quantum--;
-        if(aux->quantum==0){
+        if(strcmp(aux->estado,"Ejecucion")==0)aux->quantum--;
+        if(aux->quantum<=0){
             for(int i=0; i<ncpus; i++)
             for(int j=0; j<ncores; j++)
             for(int k=0; k<nthreads; k++){
                 if(cpus[i].cores[j].threads[k].pcb != NULL && cpus[i].cores[j].threads[k].pcb->PID==aux->PID){
                     cpus[i].cores[j].threads[k].pcb = NULL;
+                    printf("Proceso  %i  libera el hilo %i \n",aux->PID,cpus[i].cores[j].threads[k].id_thread);
                 }
             }
-            
-            // Mover el nodo al final de la cola
-            if (aux != lista.last) {
-                // Quitar el nodo de su posición actual
-                struct PCB *siguiente = aux->siguiente;
-                struct PCB *anterior = aux;
-                while (anterior->siguiente != aux) {
-                    anterior = anterior->siguiente;
-                }
-                anterior->siguiente = siguiente;
-
-                // Agregar el nodo al final de la cola
-                lista.last->siguiente = aux;
-                lista.last = aux;
-                aux->siguiente = lista.first;
-            }
-        strcpy(aux->estado,"Preparado");
-        aux->quantum=aux->quantum_max; 
-        printf("Proceso  %i  a la cola %s \n",aux->PID, aux->estado);
+            struct PCB *final = aux;
+            moverAlFinal(final);
+            strcpy(aux->estado,"Preparado");
+            aux->quantum=aux->quantum_max; 
         }
         aux = aux->siguiente;
     } 
@@ -152,6 +183,7 @@ void *scheduler_dispatcher_thread(void *args) {
         if (clk>=frecuencia){
             bajar_quantum_threads();
             round_robin();
+            //imprimirEstadoCola();
             clk=0;
         } 
         clk++;
@@ -174,10 +206,10 @@ void *process_generator_thread(void *args){
             new_pcb->PID=pid++;
             strcpy(new_pcb->estado,"Preparado");
             new_pcb->siguiente=NULL;
-            new_pcb->quantum=rand()%50;
+            new_pcb->quantum=rand()%20;
             new_pcb->quantum_max=new_pcb->quantum;
             addPCB(&lista,new_pcb);
-            printf("Proceso con PID:%i y Quantum:%i añadido a la cola\n", lista.last->PID, new_pcb->quantum);
+            //printf("Proceso %i añadido a la cola\n", lista.last->PID);
             clk2=0;
         }
     }
