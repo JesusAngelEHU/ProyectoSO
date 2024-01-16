@@ -16,7 +16,8 @@ int ncpus,ncores,nthreads;
 struct PCB {
     int PID;
     char estado[10];
-    int prioridad;
+    int quantum;
+    int quantum_max;
     struct PCB* siguiente;
 };
 
@@ -55,9 +56,9 @@ void addPCB(struct ProcessQueue* lista, struct PCB* pcb){
         lista->last=pcb;
         pcb->siguiente=pcb;
     }else{
+        lista->last->siguiente=pcb;
         lista->last=pcb;
         pcb->siguiente=lista->first;
-        lista->last->siguiente=pcb;
         }
 }
 
@@ -76,53 +77,68 @@ void *clock_thread(void *args) {
     }
 }
 
-void cambio_contexto() {
-    int id,min = INT_MAX;
 
-    // Recorrer los hilos
-    for (int i = 0; i < ncpus; i++) {
-        for (int j = 0; j < ncores; j++) {
-            for (int k = 0; k < ncores; k++) {
-                // Si el hilo está ocupado y tiene menor prioridad
-                if (cpus[i].cores[j].threads[k].pcb != NULL &&
-                    cpus[i].cores[j].threads[k].pcb->prioridad < min) {
-                    min = cpus[i].cores[j].threads[k].pcb->prioridad;
-                    id = cpus[i].cores[j].threads[k].pcb->PID;
-                }
-            }
-        }
-    }
-
-    // Realizar acciones con el hilo seleccionado
-    // Por ejemplo, imprimir el proceso con menor prioridad
-    printf("Cambio de contexto: Proceso con PID %d en hilo %d\n", min);
-}
-
+//Asigna a cada hilo libre un PCB, si no hay ninguno libre hace el cambio_de_contexto
 void round_robin(){
     //Recorrer los hilos
     for(int i=0; i<ncpus; i++){
         for(int j=0; j<ncores; j++){
             for(int k=0; k<nthreads; k++){
                 //Si el hilo esta libre se le asigna el pcb
-                printf("EL id de el thread es: %i\n",cpus[i].cores[j].threads[k].id_thread);
                 if(cpus[i].cores[j].threads[k].pcb==NULL){
-                    printf("Hilo libre\n");
+                    //Recorrer la lista hasta encontrar un PCB que este preparado
                     struct PCB *aux = lista.first;
-                    while(strcmp(aux->estado, "Preparado")==0){
-                        printf("Estado:%c",aux->estado);
-                        aux=aux->siguiente;
+                    while(aux->PID != lista.last->PID || strcmp(aux->estado,"Preparado") != 0){
+                        if(strcmp(aux->estado,"Preparado")==0){ 
+                            cpus[i].cores[j].threads[k].pcb=aux;
+                            strcpy(cpus[i].cores[j].threads[k].pcb->estado,"Ejecucion");
+                            printf("Proceso %i añadido a hilo %i\n",aux->PID,cpus[i].cores[j].threads[k].id_thread);
+                        }
+                        aux = aux->siguiente;
                     }
-                    strcpy(cpus[i].cores[j].threads[k].pcb->estado,"Esperando");
-                    cpus[i].cores[j].threads[k].pcb=aux;
-                    //printf("Proceso %i añadido a hilo %i",aux->PID,cpus[i].cores[j].threads[k].id_thread);
-                }else{
-                    printf("Cambio de contexto\n");
-                    cambio_contexto();
-                }  
-                
+                }
             }
         }
     }
+}
+
+//Funcion para baja el quantum de todos los procesos en la proces_queue, si el quantum es 0
+//lo quita del hilo y lo pone al final de la cola
+void bajar_quantum_threads(){
+    struct PCB *aux = lista.first;
+    // Recorrer la lista circularmente y reducir en uno el quantum de cada nodo
+    while(aux->PID != lista.last->PID){
+        aux->quantum--;
+        if(aux->quantum==0){
+            for(int i=0; i<ncpus; i++)
+            for(int j=0; j<ncores; j++)
+            for(int k=0; k<nthreads; k++){
+                if(cpus[i].cores[j].threads[k].pcb != NULL && cpus[i].cores[j].threads[k].pcb->PID==aux->PID){
+                    cpus[i].cores[j].threads[k].pcb = NULL;
+                }
+            }
+            
+            // Mover el nodo al final de la cola
+            if (aux != lista.last) {
+                // Quitar el nodo de su posición actual
+                struct PCB *siguiente = aux->siguiente;
+                struct PCB *anterior = aux;
+                while (anterior->siguiente != aux) {
+                    anterior = anterior->siguiente;
+                }
+                anterior->siguiente = siguiente;
+
+                // Agregar el nodo al final de la cola
+                lista.last->siguiente = aux;
+                lista.last = aux;
+                aux->siguiente = lista.first;
+            }
+        strcpy(aux->estado,"Preparado");
+        aux->quantum=aux->quantum_max; 
+        printf("Proceso  %i  a la cola %s \n",aux->PID, aux->estado);
+        }
+        aux = aux->siguiente;
+    } 
 }
 
 // Función Scheduler/Dispatcher
@@ -134,7 +150,7 @@ void *scheduler_dispatcher_thread(void *args) {
         pthread_cond_signal(&cond);
         pthread_cond_wait(&cond2,&mutex);
         if (clk>=frecuencia){
-            //bajar_prioridad_threads();
+            bajar_quantum_threads();
             round_robin();
             clk=0;
         } 
@@ -158,9 +174,10 @@ void *process_generator_thread(void *args){
             new_pcb->PID=pid++;
             strcpy(new_pcb->estado,"Preparado");
             new_pcb->siguiente=NULL;
-            new_pcb->prioridad=50;
+            new_pcb->quantum=rand()%50;
+            new_pcb->quantum_max=new_pcb->quantum;
             addPCB(&lista,new_pcb);
-            printf("Proceso con PID:%i añadido a la cola\n", lista.last->PID);
+            printf("Proceso con PID:%i y Quantum:%i añadido a la cola\n", lista.last->PID, new_pcb->quantum);
             clk2=0;
         }
     }
@@ -242,9 +259,6 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    //Liberar las variables de la estructura machine
-    liberarMachine(cpus,ncpus,ncores);
-
     // //Joins y destroys
     pthread_join(clock_thread_id,NULL);
     pthread_join(scheduler_dispatcher_thread_id,NULL);
@@ -252,5 +266,8 @@ int main(int argc, char *argv[]) {
     pthread_mutex_destroy(&mutex);
     pthread_cond_destroy(&cond);
     pthread_cond_destroy(&cond2);
+
+    //Liberar las variables de la estructura machine
+    liberarMachine(cpus,ncpus,ncores);
     return 0;
 }
