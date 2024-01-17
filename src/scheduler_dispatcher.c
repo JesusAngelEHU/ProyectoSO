@@ -1,4 +1,7 @@
 #include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include "../include/scheduler_dispatcher.h"
 //Asigna a cada hilo libre un PCB, si no hay ninguno libre hace el cambio_de_contexto
 void round_robin(){
@@ -15,7 +18,7 @@ void round_robin(){
                             if(cpus[i].cores[j].threads[k].pcb == NULL){
                                 cpus[i].cores[j].threads[k].pcb=aux;
                                 strcpy(cpus[i].cores[j].threads[k].pcb->estado,"Ejecucion");
-                                printf("Proceso %i añadido a hilo %i\n",aux->PID,cpus[i].cores[j].threads[k].id_thread);
+                                printf("|Proceso %i añadido a hilo %i|\n",aux->PID,cpus[i].cores[j].threads[k].id_thread);
                                 break;
                             }
                         }
@@ -28,27 +31,32 @@ void round_robin(){
 }
 
 // Función para mover un nodo al final de la cola
-void moverAlFinal(struct PCB* nodo) {
-    // Actualizar la referencia a lista.first solo si el nodo que se movió era el primer elemento
-    if (lista.first->PID == nodo->PID) {
-        lista.first = lista.first->siguiente;
+void moverAlFinal(struct PCB** nodo) {
+    struct PCB* aux = *nodo;
 
+    // Actualizar la referencia a lista.first solo si el nodo que se movió era el primer elemento
+    if (lista.first->PID == aux->PID) {
+        lista.first = lista.first->siguiente;
     }
-    if (nodo->PID != lista.last->PID) {
+
+    if (aux->PID != lista.last->PID) {
         // Quitar el nodo de su posición actual
-        struct PCB* siguiente = nodo->siguiente;
-        struct PCB* anterior = nodo;
-        while (anterior->siguiente->PID != nodo->PID) {
+        struct PCB* siguiente = aux->siguiente;
+        struct PCB* anterior = aux;
+        while (anterior->siguiente->PID != aux->PID) {
             anterior = anterior->siguiente;
         }
         anterior->siguiente = siguiente;
 
         // Agregar el nodo al final de la cola
-        lista.last->siguiente = nodo;
-        lista.last = nodo;
-        nodo->siguiente = lista.first;
+        lista.last->siguiente = aux;
+        lista.last = aux;
+        aux->siguiente = lista.first;
     }
+
+    *nodo = aux;  // Actualizar el puntero original
 }
+
 
 
 
@@ -65,13 +73,12 @@ void bajar_quantum_threads(){
             for(int k=0; k<nthreads; k++){
                 if(cpus[i].cores[j].threads[k].pcb != NULL && cpus[i].cores[j].threads[k].pcb->PID==aux->PID){
                     cpus[i].cores[j].threads[k].pcb = NULL;
-                    printf("Proceso  %i  libera el hilo %i \n",aux->PID,cpus[i].cores[j].threads[k].id_thread);
+                    //printf("--Proceso %i libera el hilo %i\n",aux->PID,cpus[i].cores[j].threads[k].id_thread);
                 }
             }
-            struct PCB *final = aux;
-            moverAlFinal(final);
+            aux->quantum=aux->quantum_max;
             strcpy(aux->estado,"Preparado");
-            aux->quantum=aux->quantum_max; 
+            moverAlFinal(&aux);
         }
         aux = aux->siguiente;
     } 

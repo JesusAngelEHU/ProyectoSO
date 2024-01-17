@@ -15,19 +15,6 @@ pthread_cond_t cond2;
 int clk = 0,done=0, ntemps=2,proceso_generado=1;
 int ncpus,ncores,nthreads;
 
-//Estructura de memoria
-struct PhysicalMemory{
-    int mem[(1<<24) - (1<< 22)];
-    int tabladepaginas[1<<22];
-};
-
-//Estructura memoryManagement
-struct MemoryManagement{
-    int code;
-    int data;
-    int pgb;
-};
-
 struct CPU* cpus;
 struct ProcessQueue lista;
 struct PhysicalMemory mp;

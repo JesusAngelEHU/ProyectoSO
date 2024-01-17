@@ -1,4 +1,7 @@
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "../include/loader.h"
 
 //Funcion para inicializar la cola de procesos
@@ -38,28 +41,29 @@ void addPCB(struct ProcessQueue* lista, struct PCB* pcb){
 }
 
 
-// //Funcion para leer los programas
-// void leer_fichero(struct PCB* new_pcb, int pid){
-//     // Construimos el nombre del archivo basado en el PID
-//     int i=0;
-//     char filename[25];
-//     char code[20],data[20];
-//     sprintf(filename, "prometheus/prog%03d.elf", pid);
-//     FILE *archivo = fopen(filename, "r");
-//     char linea[512];
-//     while (fgets(linea, sizeof(linea), archivo) != NULL){
-//         if(i==0){
-//             sscanf(linea,".text %s", code);
-//             new_pcb->mm->code=atoi(code);
-//         } 
-//         if(i==1){
-//             sscanf(linea, ".data %s",data);
-//             new_pcb->mm->data=atoi(data);
-//         }
-        
-//         i++;
-//     }
-// }
+//Funcion para leer los programas
+void leer_fichero(struct PCB* new_pcb, int pid){
+    // Construimos el nombre del archivo basado en el PID
+    int i=0;
+    char filename[25];
+    char code[20],data[20];
+    sprintf(filename, "prometheus/prog%03d.elf", pid);
+    FILE *archivo = fopen(filename, "r");
+    char linea[512];
+    //Guardamos en los punteros el code y el data 
+    while (fgets(linea, sizeof(linea), archivo) != NULL){
+        if(i==0){
+            sscanf(linea,".text %s", code);
+            new_pcb->mm->code=atoi(code);
+        } 
+        if(i==1){
+            sscanf(linea, ".data %s",data);
+            new_pcb->mm->data=atoi(data);
+        }
+        i++;
+    }
+    printf("&code:%i &data:%i\n",new_pcb->mm->code,new_pcb->mm->data);
+}
 
 //Funcion para crear un nuevo pcb
 struct PCB* crear_pcb(int* pid){
@@ -67,9 +71,9 @@ struct PCB* crear_pcb(int* pid){
                 new_pcb->PID=(*pid)++;
                 strcpy(new_pcb->estado,"Preparado");
                 new_pcb->siguiente=NULL;
-                new_pcb->quantum=rand()%30;
+                new_pcb->quantum=rand()%30 + 1;
                 new_pcb->quantum_max=new_pcb->quantum;
-                //new_pcb->mm=(struct MemoryManagement *)malloc(sizeof(struct MemoryManagement));
+                new_pcb->mm=(struct MemoryManagement *)malloc(sizeof(struct MemoryManagement));
     return new_pcb;
 }
 
@@ -86,9 +90,10 @@ void *loader_thread(void *args){
         pthread_cond_wait(&cond2,&mutex);
         if(clk2>=frecuencia){
             struct PCB* new_pcb=crear_pcb(&pid);
-            //leer_fichero(new_pcb,pid);
+            leer_fichero(new_pcb,pid);
             addPCB(&lista,new_pcb);
-            printf("Proceso %i creado con Quantum:%i\n", lista.last->PID,new_pcb->quantum);
+            //imprimirEstadoCola();//Descomentar para vez como se actualiza la cola iteracion a iteracion
+            //printf("++Proceso %i creado con Quantum:%i\n", lista.last->PID,new_pcb->quantum);
             clk2=0;
         }
     }

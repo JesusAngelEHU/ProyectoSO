@@ -18,6 +18,20 @@ struct ProcessQueue {
     struct PCB* first;
     struct PCB* last;
 };
+
+//Estructura de memoria
+struct PhysicalMemory{
+    int mem[(1<<24) - (1<< 22)];
+    int tabladepaginas[1<<22];
+};
+
+//Estructura memoryManagement
+struct MemoryManagement{
+    int code;
+    int data;
+    int pgb;
+};
+
 extern struct ProcessQueue lista;
 extern pthread_mutex_t mutex;
 extern pthread_cond_t cond;

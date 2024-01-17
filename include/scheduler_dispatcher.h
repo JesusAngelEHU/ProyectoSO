@@ -36,7 +36,7 @@ void liberarMachine(struct CPU* cpus, int ncpus, int ncores);
 struct CPU* inicializarMachine();
 void *scheduler_dispatcher_thread(void *args);
 void bajar_quantum_threads();
-void moverAlFinal(struct PCB* nodo);
+void moverAlFinal(struct PCB** nodo);
 void round_robin();
 
 #endif  // SCHEDULER_H
