@@ -73,7 +73,7 @@ void bajar_quantum_threads(){
             for(int k=0; k<nthreads; k++){
                 if(cpus[i].cores[j].threads[k].pcb != NULL && cpus[i].cores[j].threads[k].pcb->PID==aux->PID){
                     cpus[i].cores[j].threads[k].pcb = NULL;
-                    //printf("--Proceso %i libera el hilo %i\n",aux->PID,cpus[i].cores[j].threads[k].id_thread);
+                    printf("--Proceso %i libera el hilo %i\n",aux->PID,cpus[i].cores[j].threads[k].id_thread);
                 }
             }
             aux->quantum=aux->quantum_max;

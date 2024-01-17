@@ -17,7 +17,7 @@ OBJS = $(OBJ_DIR)/main.o $(OBJ_DIR)/clock.o $(OBJ_DIR)/scheduler_dispatcher.o $(
 all: $(BIN)
 
 $(BIN): $(OBJS)
-	$(CC) $(CC_FLAGS) -o $@ $^
+	$(CC) $(CC_FLAGS) -o $@ $^ -lm
 
 # Compile main.c file to object files:
 $(OBJ_DIR)/%.o : %.c
