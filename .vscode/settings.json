@@ -1,8 +1,0 @@
-{
-    "files.associations": {
-        "stdlib.h": "c",
-        "clock.h": "c",
-        "loader.h": "c",
-        "scheduler_dispatcher.h": "c"
-    }
-}
